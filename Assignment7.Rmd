@@ -1,0 +1,185 @@
+---
+title: "Video Game Sales"
+author: "Brianna Humphries"
+date: "10/6/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data Cleaning
+```{r import, echo=TRUE}
+#import data
+library(readr)
+games_data <- read_csv("vgsales-12-4-2019-short.csv", 
+    col_types = cols(Rank = col_integer())) #change Rank variable to integer class
+
+#change different variables to factor class
+games_data$Genre <- as.factor(games_data$Genre)
+games_data$ESRB_Rating <- as.factor(games_data$ESRB_Rating)
+games_data$Platform <- as.factor(games_data$Platform)
+games_data$Publisher <- as.factor(games_data$Publisher)
+games_data$Developer <- as.factor(games_data$Developer)
+games_data$Year <- as.factor(games_data$Year)
+
+#rename the levels of the ESRB Rating variable and order them
+#KA (Kids to Adults) rating was changed to Everyone
+library(plyr)
+games_data$ESRB_Rating <- revalue(games_data$ESRB_Rating, c("E"="Everyone", "E10"="Everyone10+", "T"="Teen", "M"="Mature", "AO" = "AdultsOnly", "RP"="RatingPending", "KA"="Everyone", "EC"="EarlyChildhood"))
+games_data$ESRB_Rating <- ordered(games_data$ESRB_Rating, levels = c("EarlyChildhood", "Everyone", "Everyone10+", "Teen", "Mature", "RatingPending", "AdultsOnly"))
+
+#Change levels of Publisher and Developer variables called Unknown to missing
+levels(games_data$Publisher)[levels(games_data$Publisher)=='Unknown'] <- NA
+levels(games_data$Developer)[levels(games_data$Developer)=='Unknown'] <- NA
+
+#Rename a couple Publisher and Developer levels
+games_data$Publisher <- revalue(games_data$Publisher, 
+                c("Microsoft Game Studios"="Microsoft Studios", 
+                  "Valve"="Valve Corporation", "Valve Software"="Valve Corporation", #all Valve Corporation
+                  "Sony Computer Entertainment"="Sony Interactive Entertainment")) #all Sony Interactive Entertainment
+games_data$Developer <- revalue(games_data$Developer, c("Microsoft Game Studios"="Microsoft Studios", "Valve"="Valve Corporation", "Valve Software"="Valve Corporation", "Sony Computer Entertainment"="Sony Interactive Entertainment"))
+
+#Rename the sub-genres to their overall Genre
+games_data$Genre <- revalue(games_data$Genre, c("Platform"="Action", "Shooter"="Action", "Fighting"="Action", "Visual Novel"="Adventure", "Racing"="Sports"))
+
+#order genres by similarities for graphing
+games_data$Genre <- ordered(games_data$Genre, levels = c("Action", "Action-Adventure", "Adventure", "Role-Playing", "Simulation", "Strategy", "Sports", "Board Game", "Puzzle", "Education", "Music", "MMO", "Party", "Misc"))
+
+attach(games_data)
+summary(games_data)
+```
+
+## Genre vs. ESRB Rating
+```{r GenreDist, echo=TRUE}
+library(ggplot2)
+library(dplyr)
+
+#create subset where missing values in Genre and ESRB_Rating are omitted
+data1 <- games_data[complete.cases(games_data$Genre, games_data$ESRB_Rating),] #23619 observations
+
+#plot bar chart of Genre stacked by Rating
+plot1 <- ggplot(data1, aes(x=Genre, fill=ESRB_Rating, stat="count"))+
+  xlab("Genre")+
+  ylab("Count")+
+  ggtitle("Video Game Genres vs. ESRB Rating")+
+  geom_bar(width=0.75)+
+  theme(axis.text.x = element_text(angle = 85, vjust=0.5),
+        plot.title = element_text(hjust=0.5))
+
+plot1
+```
+
+## Top 100 Ranked Video Games
+```{r 100, echo=TRUE}
+#Create subset with top 100 games
+top100 <- games_data[games_data$Rank < 101,]
+
+#Top 100 ESRB Ratings
+rating_100 <- ggplot(data=subset(top100, !is.na(ESRB_Rating)), aes(x=ESRB_Rating, fill=ESRB_Rating, stat="count"))+
+  xlab("ESRB Rating")+
+  ylab("Number of Games")+
+  ggtitle("Top 100 Video Game Ratings")+
+  geom_text(stat="count",aes(label=..count..), vjust = -.5) +
+  theme(legend.position = "none", axis.text = element_text(size=12),
+        plot.title = element_text(hjust=0.5))+
+  geom_bar(width=0.75)
+
+#Top 100 Genres
+genre_100 <- ggplot(top100, aes(x=Genre, stat="count"))+
+  xlab("Genre")+
+  ylab("Number of Games")+
+  ggtitle("Top 100 Video Game Genres")+
+  geom_bar(width=0.75, fill="#F8766D")+
+  geom_text(stat="count",aes(label=..count..), vjust = 0) +
+  theme(legend.position = "none",axis.text.x = element_text(angle = 85, vjust=0.95, hjust = 0.95),
+        plot.title = element_text(hjust=0.5))
+
+#Top 100 Years
+year_100 <- ggplot(top100, aes(x=Year, stat="count"))+
+  xlab("Year")+
+  ylab("Number of Games")+
+  ggtitle("Top 100 Video Game Years")+
+  geom_bar(width=0.75, fill="#C77CFF")+
+  geom_text(stat="count",aes(label=..count..), vjust = -.5) +
+  theme(legend.position = "none",axis.text.x = element_text(angle = 85, vjust=0.5),
+        plot.title = element_text(hjust=0.5))
+
+#Top 100 Publishers
+pub_100 <- ggplot(data=subset(top100, !is.na(Publisher)), aes(x=Publisher, stat="count"))+
+  xlab("Publisher")+
+  ylab("Number of Games")+
+  ggtitle("Top 100 Video Game Publisher")+
+  geom_bar(width=0.75, fill="#00BFC4")+
+  geom_text(stat="count",aes(label=..count..), vjust = 0) +
+  theme(legend.position = "none",axis.text.x = element_text(angle = 85, vjust=0.95, hjust = 0.95),
+        plot.title = element_text(hjust=0.5))
+
+#Top 100 Critic Scores
+critic_100 <- ggplot(data=subset(top100, !is.na(Critic_Score)))+ #without missing values
+  geom_histogram(mapping=aes(x=Critic_Score), binwidth=0.1, fill="#7CAE00", colour="grey")+
+  xlab("Critic Score")+
+  ylab("Number of Games")+
+  ggtitle("Top 100 Video Game Critic Scores")+
+  theme(plot.title = element_text(hjust=0.5))
+
+rating_100
+genre_100
+year_100
+pub_100
+critic_100
+```
+
+## Critic Score vs. User Score
+```{r score, echo=TRUE}
+#create dataset without missing values in Critic or User score
+data2 <- games_data[complete.cases(games_data$Critic_Score, games_data$User_Score),] #218 observations
+
+#plot Critic score vs. User Score colored by ESRB Rating in plotly
+library(plotly)
+plot3 <- plot_ly(data=data2, x = ~Critic_Score, y = ~User_Score, color = ~ESRB_Rating, type="scatter", mode = "markers")
+plot3 <- plot3 %>% layout(title = "Critic Score vs. User Score",
+                          xaxis = list(title = "Critic Score"),
+                          yaxis = list(title = "User Score"))
+
+plot3
+```
+
+```{r corr1, echo=TRUE}
+#correlation between Critic and User Scores
+cor(data2$Critic_Score, data2$User_Score)
+```
+
+## Critic Score and User Score vs. Sales
+```{r sales}
+#create column in data that combines Total_Shipped and Global_Sales
+#every observation with missing values in Total_shipped has value in Global_Sales and vice versa.
+#Rank is by Total_Shipped and when there is a missing value, it goes by Global_Sales
+games_data$total <- coalesce(games_data$Total_Shipped, games_data$Global_Sales)
+
+#create subset of data without missing data in Critic_Score and total sales
+data3 <- games_data[complete.cases(games_data$Critic_Score, games_data$total),] #4861 observations
+#create subset of data without missing data in User_Score and total sales
+data4 <- games_data[complete.cases(games_data$User_Score, games_data$total),] #242 observations
+
+#plot Critic Score vs Total Sales, colored by ESRB Rating
+plot4 <- plot_ly(data=data3, x = ~Critic_Score, y = ~total, color = ~ESRB_Rating, type="scatter", mode = "markers")
+plot4 <- plot4 %>% layout(title = "Critic Score vs. Total Sales",
+                          xaxis = list(title = "Critic Score"),
+                          yaxis = list(title = "Total Sales (Millions)"))
+
+#plot Critic Score vs Total Sales, colored by ESRB Rating
+plot5 <- plot_ly(data=data4, x = ~User_Score, y = ~total, color = ~ESRB_Rating, type="scatter", mode = "markers")
+plot5 <- plot5 %>% layout(title = "User Score vs. Total Sales",
+                          xaxis = list(title = "User Score"),
+                          yaxis = list(title = "Total Sales (Millions)"))
+
+plot4
+#correlation of Critic Score and Total Sales
+cor(data3$Critic_Score, data3$total)
+
+plot5
+#correlation of User Score and Total Sales
+cor(data4$User_Score, data4$total)
+```

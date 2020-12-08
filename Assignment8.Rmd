@@ -1,0 +1,306 @@
+---
+title: "VideoGameSales"
+author: "Brianna Humphries"
+date: "10/13/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Data Cleaning
+```{r import, echo=TRUE}
+#import data
+library(readr)
+games_data <- read_csv("vgsales-12-4-2019-short.csv", 
+    col_types = cols(Rank = col_integer())) #change Rank variable to integer class
+
+#change different variables to factor class
+games_data$Genre <- as.factor(games_data$Genre)
+games_data$ESRB_Rating <- as.factor(games_data$ESRB_Rating)
+games_data$Platform <- as.factor(games_data$Platform)
+games_data$Publisher <- as.factor(games_data$Publisher)
+games_data$Developer <- as.factor(games_data$Developer)
+games_data$Year <- as.factor(games_data$Year)
+
+#rename the levels of the ESRB Rating variable and order them
+#KA (Kids to Adults) rating was changed to Everyone
+library(plyr)
+games_data$ESRB_Rating <- revalue(games_data$ESRB_Rating, c("E"="Everyone", "E10"="Everyone10+", "T"="Teen", "M"="Mature", "AO" = "AdultsOnly", "RP"="RatingPending", "KA"="Everyone", "EC"="EarlyChildhood"))
+games_data$ESRB_Rating <- ordered(games_data$ESRB_Rating, levels = c("EarlyChildhood", "Everyone", "Everyone10+", "Teen", "Mature", "RatingPending", "AdultsOnly"))
+
+#Change levels of Publisher and Developer variables called Unknown to missing
+levels(games_data$Publisher)[levels(games_data$Publisher)=='Unknown'] <- NA
+levels(games_data$Developer)[levels(games_data$Developer)=='Unknown'] <- NA
+
+#Rename a couple Publisher and Developer levels
+games_data$Publisher <- revalue(games_data$Publisher, 
+                c("Microsoft Game Studios"="Microsoft Studios", 
+                  "Valve"="Valve Corporation", "Valve Software"="Valve Corporation", #all Valve Corporation
+                  "Sony Computer Entertainment"="Sony Interactive Entertainment")) #all Sony Interactive Entertainment
+games_data$Developer <- revalue(games_data$Developer, c("Microsoft Game Studios"="Microsoft Studios", "Valve"="Valve Corporation", "Valve Software"="Valve Corporation", "Sony Computer Entertainment"="Sony Interactive Entertainment"))
+
+#Rename the sub-genres to their overall Genre
+games_data$Genre <- revalue(games_data$Genre, c("Platform"="Action", "Shooter"="Action", "Fighting"="Action", "Visual Novel"="Adventure", "Racing"="Sports"))
+
+#order genres by similarities for graphing
+games_data$Genre <- ordered(games_data$Genre, levels = c("Action", "Action-Adventure", "Adventure", "Role-Playing", "Simulation", "Strategy", "Sports", "Board Game", "Puzzle", "Education", "Music", "MMO", "Party", "Misc"))
+
+#revalue factors of Platform to be their overall platform
+library(forcats)
+games_data$Platform <- fct_collapse(games_data$Platform, Xbox = c("X360","XB", "XBL", "XOne"), 
+             Nintendo = c("Wii","WiiU", "WW", "N64", "GC", "NES", "3DS", "DS", "DSi", "DSiW", "GB", "GBA", "GBC", "SNES", "NS", "VB", "VC"),
+             PlayStation = c("PS", "PS2", "PS3", "PS4", "PSP", "PSV", "PSN"), 
+             Atari = c("2600", "5200", "7800", "AJ", "AST", "Lynx"),
+             PC = c("PC", "OSX", "BRW", "Linux"),
+             Mobile = c("And", "iOS", "WinP"),
+             Sega = c("GEN", "SAT", "GG", "SCD", "DC", "MSX", "WS", "S32X", "MS"),
+             Other = c("BBCM", "ACPC", "Amig", "ApII", "C128", "C64", "FMT", "NG", "3DO", "Aco", "CD32", "Arc", "CDi", "CD32", "GIZ", "Int", "iQue", "Mob", "NGage", "Ouya", "PCFX", "PCE", "TG16", "ZXS", "MSD"))
+```
+
+
+## Data Transformations
+```{r log_global_sales, echo=TRUE}
+#Create variable that merges Total_Shipped and Global_Sales to represent Total Sales
+#and to have less missing data for a model
+library(dplyr)
+games_data$total_sales <- coalesce(games_data$Total_Shipped, games_data$Global_Sales)
+data0 <- games_data[complete.cases(games_data$total_sales),] #21242 observations
+#exclude sales of 0 
+data1<- data0%>% filter(total_sales > 0)# 19862 observations
+
+#plot histogram and qq plot of total sales
+par(mfrow=c(1,2)) #put graphs side by side
+library(rcompanion)
+plotNormalHistogram(data1$total_sales, col="lightblue3", linecol="red", lwd=2,
+                    xlab="Total Sales (Millions)")  #plot histogram of total sales
+qqnorm(data1$total_sales) #q-q plot of total sales
+qqline(data1$total_sales, col="red") #add line to q-q plot
+
+
+#plot log transformation of total sales
+logTotal = log(data1$total_sales) #log transformation of total sales
+data1 <- cbind(data1, logTotal) #add column to new dataset with logTotal
+#plot histogram and q-q plot of log of total sales
+par(mfrow=c(1,2)) #put graphs side by side
+plotNormalHistogram(logTotal, col="lightblue3", linecol="red", lwd=2,
+                    xlab="Log of Total Sales")  #plot histogram of log of sales
+qqnorm(data1$logTotal) #q-q plot of total sales
+qqline(data1$logTotal, col="red") #add line to q-q plot
+
+data_log <- full_join(games_data, data1)
+```
+
+```{r logCriticScores, echo=TRUE}
+# subset of data without missing values in critic score
+data2 <- games_data[complete.cases(games_data$Critic_Score),] #6536 observations
+
+#plot histogram and qq plot of critic score
+par(mfrow=c(2,2)) #put graphs side by side
+plotNormalHistogram(data2$Critic_Score, col="lightblue3", linecol="red", lwd=2,
+                    xlab="Critic Score")  #plot histogram of critic scores
+qqnorm(data2$Critic_Score) #q-q plot of critic score
+qqline(data2$Critic_Score, col="red") #add line to q-q plot
+
+
+#plot log transformation of critic score
+logCritic = log(data2$Critic_Score) #log transformation of critic score
+#plot histogram and q-q plot of log of critic score
+plotNormalHistogram(logCritic, col="lightblue3", linecol="red", lwd=2,
+                    xlab="Log of Critic Scores")  #plot histogram of log of critic scores
+qqnorm(logCritic) #q-q plot of critic score
+qqline(logCritic, col="red") #add line to q-q plot
+```
+
+```{r logUserScores, echo=TRUE}
+# subset of data without missing values in user score
+data3 <- games_data[complete.cases(games_data$User_Score),] #335 observations
+
+#plot histogram and qq plot of user score
+par(mfrow=c(2,2)) #put graphs side by side
+plotNormalHistogram(data3$User_Score, col="lightblue3", linecol="red", lwd=2,
+                    xlab="User Scores")  #plot histogram of user scores
+qqnorm(data3$User_Score) #q-q plot of user score
+qqline(data2$User_Score, col="red") #add line to q-q plot
+
+
+#plot log transformation of user score
+logUser = log(data3$User_Score) #log transformation of user score
+#plot histogram and q-q plot of log of user score
+plotNormalHistogram(logUser, col="lightblue3", linecol="red", lwd=2,
+                    xlab="Log of User Scores")  #plot histogram of log of user scores
+qqnorm(logUser) #q-q plot of user score
+qqline(logUser, col="red") #add line to q-q plot
+```
+```{r logSales, echo=TRUE}
+# subset of data without missing values in NA Sales (North America)
+dataNAS <- games_data[complete.cases(games_data$NA_Sales),] #12964 observations
+dataJP <- games_data[complete.cases(games_data$JP_Sales),] #7043 observations
+dataPAL <- games_data[complete.cases(games_data$PAL_Sales),] #13189 observations
+dataOther <- games_data[complete.cases(games_data$Other_Sales),] #15522 observations
+
+#exclude sales of 0 
+dataNAS <- dataNAS%>% filter(NA_Sales > 0) #12679 observations
+dataJP <- dataJP%>% filter(JP_Sales > 0) #6618 observations
+dataPAL <- dataPAL%>% filter(PAL_Sales > 0) #10911 observations
+dataOther <- dataOther%>% filter(Other_Sales > 0) #10277 observations
+
+par(mfrow=c(2,2)) #put graphs side by side
+plotNormalHistogram(dataNAS$NA_Sales, col="lightblue3", linecol="red", lwd=2,
+                    xlab="North American Sales (in millions)")  #plot histogram of NA sales
+plotNormalHistogram(dataJP$JP_Sales, col="lightblue3", linecol="red", lwd=2,
+                    xlab="Japan Sales (in millions)")  #plot histogram of JP sales
+plotNormalHistogram(dataPAL$PAL_Sales, col="lightblue3", linecol="red", lwd=2,
+                    xlab="European Sales (in millions)")  #plot histogram of PAL sales
+plotNormalHistogram(dataOther$Other_Sales, col="lightblue3", linecol="red", lwd=2,
+                    xlab="Sales in the rest of the world(in millions)")  #plot histogram of Other sales
+
+#find log of all geographic sales variables
+logNA = log(dataNAS$NA_Sales) #log transformation of NA sales
+logJP = log(dataJP$JP_Sales) #log transformation of JP sales
+logPAL = log(dataPAL$PAL_Sales) #log transformation of PAL sales
+logOther = log(dataOther$Other_Sales) #log transformation of Other sales
+
+#plot all histograms of log transformed sales
+par(mfrow=c(2,2)) #put graphs side by side
+plotNormalHistogram(logNA, col="lightblue3", linecol="red", lwd=2,
+                    xlab="Log of North American Sales")  #plot histogram of log of NA sales
+plotNormalHistogram(logJP, col="lightblue3", linecol="red", lwd=2,
+                    xlab="Log of Japan Sales")  #plot histogram of log of JP sales
+plotNormalHistogram(logPAL, col="lightblue3", linecol="red", lwd=2,
+                    xlab="Log of European Sales")  #plot histogram of log of PAL sales
+plotNormalHistogram(logOther, col="lightblue3", linecol="red", lwd=2,
+                    xlab="Log of Sales in the rest of the world")  #plot histogram of log of Other sales
+
+#add log data to data set data_log with log columns
+dataNAS <- cbind(dataNAS, logNA)
+dataJP <- cbind(dataJP, logJP)
+dataPAL <- cbind(dataPAL, logPAL)
+dataOther <- cbind(dataOther, logOther)
+data_log <- full_join(data_log, dataNAS)
+data_log <- full_join(data_log, dataJP)
+data_log <- full_join(data_log, dataPAL)
+data_log <- full_join(data_log, dataOther)
+```
+
+## Scores vs. Log of Total Sales
+```{r scores, echo=TRUE}
+attach(data_log)
+library(plotly)
+#plot Critic Score vs Total Sales, colored by ESRB Rating
+#4706 observations
+criticPlot <- plot_ly(data=data_log, x = ~Critic_Score, y = ~logTotal, color = ~Platform, type="scatter", mode = "markers", colorscale='contour')
+criticPlot <- criticPlot %>% layout(title = "Critic Score vs. Log of Total Sales by Platform",
+                          xaxis = list(title = "Critic Score"),
+                          yaxis = list(title = "Log of Total Sales (Millions)"))
+
+#plot User Score vs Total Sales, colored by ESRB Rating
+#238 observations
+userPlot <- plot_ly(data=data_log, x = ~User_Score, y = ~logTotal, color = ~Platform, type="scatter", mode = "markers")
+userPlot <- userPlot %>% layout(title = "User Score vs. Log of Total Sales by Platform",
+                          xaxis = list(title = "User Score"),
+                          yaxis = list(title = "Log of Total Sales (Millions)"))
+
+criticPlot
+userPlot
+cor.test(data_log$Critic_Score, data_log$logTotal)
+cor.test(data_log$User_Score, data_log$logTotal)
+```
+
+
+## Platform Distribution
+```{r platDist, echo=TRUE}
+#Platforms
+ggplot(data_log, aes(x=Platform, fill=Platform, stat="count"))+
+  xlab("Platform")+
+  ylab("Number of Games")+
+  geom_text(stat="count",aes(label=..count..), vjust = -.5) +
+  theme(legend.position = "none", text = element_text(size=12))+
+  geom_bar(width=0.75)
+```
+
+## Different Variables vs. Total Sales
+### Platform
+```{r boxplot, echo=TRUE}
+#plot boxplot of platforms vs total sales
+plot_ly(data_log, y = ~logTotal, color = ~Platform, type = "box", text = ~paste("Game: ", Name, '<br>Year:', Year)) %>% 
+  layout(title = "Platforms by Log of Total Sales",
+         yaxis = list(title = "Log of Total Sales",
+                      zeroline = FALSE),
+         xaxis = list(title = "Platform",
+                      zeroline = FALSE))
+```
+
+
+### ESRB Ratings
+```{r boxplot1, echo=TRUE}
+plot_ly(data_log, y = ~logTotal, color = ~ESRB_Rating, type = "box", text = ~paste("Game: ", Name, '<br>Year:', Year)) %>% 
+  layout(title = "ESRB Rating by Log of Total Sales",
+         yaxis = list(title = "Log of Total Sales",
+                      zeroline = FALSE),
+         xaxis = list(title = "ESRB Rating",
+                      zeroline = FALSE))
+```
+
+
+### Genre
+```{r boxplot2, echo=TRUE}
+plot_ly(data_log, y = ~logTotal, color = ~Genre, type = "box", text = ~paste("Game: ", Name, '<br>Year:', Year)) %>% 
+  layout(title = "Genre by Log of Total Sales",
+         yaxis = list(title = "Log of Total Sales",
+                      zeroline = FALSE),
+         xaxis = list(title = "Genre",
+                      zeroline = FALSE))
+```
+
+### Region Sales
+```{r sales, echo=TRUE}
+# data_log_year <- data_log[complete.cases(data_log$Year, data_log$logNA, data_log$logPAL, data_log$logJP, data_log$logOther, data_log$logTotal),]
+library(reshape2)
+# data_log_year %>% 
+#   select(Year, logNA, logPAL, logJP, 
+#          logOther, logTotal) %>%
+#   melt(id.vars = "Year") %>%
+#   group_by(Year, variable) %>% 
+#   summarise(logTotal = sum(value)) %>%
+# ggplot(aes(x = Year, y = logTotal, color = variable, group = variable)) +
+#   geom_point() + 
+#   geom_line() + 
+#   labs(x = "Year", y = "Log of Total Sales", color = "Region") +
+#    theme(axis.text.x = element_text(angle = 90),
+#          panel.background = element_rect(),
+#          panel.grid.major = element_blank(),
+#          panel.grid.minor = element_blank())
+# 
+games_data1 <- games_data[complete.cases(games_data$Year, games_data$NA_Sales, games_data$PAL_Sales, games_data$JP_Sales, games_data$Other_Sales, games_data$total_sales),]
+
+games_data1 %>% 
+  select(Year, NA_Sales, PAL_Sales, JP_Sales, 
+         Other_Sales, total_sales) %>%
+  melt(id.vars = "Year") %>%
+  group_by(Year, variable) %>% 
+  summarise(total_sales = sum(value)) %>%
+ggplot(aes(x = Year, y = total_sales, color = variable, group = variable)) +
+  geom_point() + 
+  geom_line() + 
+  labs(x = "Year", y = "Mean Sales (in Millions)", color = "Region") +
+   theme(axis.text.x = element_text(angle = 90),
+         panel.background = element_rect(),
+         panel.grid.major = element_blank(),
+         panel.grid.minor = element_blank())
+```
+
+
+```{r corr, echo=TRUE}
+#correlation plot of continuous sales variables
+library(corrplot)
+par(mfrow=c(1,2))   #plot side by side
+corrData <- as.matrix(data_log[, c(18,19,20,21,22)]) #subset that only sales variables
+corrData <- na.omit(corrData)
+
+correl <- cor(corrData) #find correlations of all the variables
+corrplot(correl, method="number", type = "upper") #plot correlation numbers
+corrplot(correl, method="circle", type = "upper") #plot correlation circles
+```
